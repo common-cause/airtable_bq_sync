@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd *)",
+      "Bash(cd * && git *)",
+      "Bash(python *)",
+      "Bash(pip install *)",
+      "Bash(.venv/Scripts/python *)",
+      "Bash(.venv/Scripts/pip install *)",
+      "Bash(git *)",
+      "WebSearch",
+      "WebFetch",
+      "mcp__knowledge-library__kl_list",
+      "mcp__knowledge-library__kl_get",
+      "mcp__knowledge-library__kl_search",
+      "mcp__knowledge-library__kl_write",
+      "mcp__knowledge-library__kl_update",
+      "mcp__bigquery__bq_query",
+      "mcp__bigquery__bq_list_tables",
+      "mcp__schema__schema_list_datasets",
+      "mcp__schema__schema_get_dataset",
+      "mcp__schema__schema_list_tables",
+      "mcp__schema__schema_get_table",
+      "mcp__schema__schema_search",
+      "mcp__schema-write__annotate_field",
+      "mcp__schema-write__remove_field_annotation",
+      "mcp__schema-write__get_annotations"
+    ]
+  },
+  "meta": {
+    "template_version": 6,
+    "scaffold_date": "2026-03-31",
+    "project_type": "bigquery"
+  }
+}

@@ -1,0 +1,12 @@
+# 1 Million Conversations Report Back Template
+base_id: appPuybhyk2FskqMG
+
+tables:
+  - name: Individual Conversation Reports
+    bq_table: individual_conversation_reports
+
+  - name: Event Reports
+    bq_table: event_reports
+
+  - name: Event Reports - Attendees
+    bq_table: event_reports_attendees

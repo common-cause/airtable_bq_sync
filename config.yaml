@@ -1,0 +1,9 @@
+# Airtable -> BigQuery sync configuration
+# Each entry under "syncs" points to a YAML file defining tables from one Airtable base.
+
+bigquery:
+  project: proj-tmc-mem-com
+  dataset: million_conversations
+
+syncs:
+  - syncs/million_conversations.yaml

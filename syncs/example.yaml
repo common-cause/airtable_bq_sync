@@ -1,0 +1,9 @@
+# Example sync file — one per Airtable base
+# Copy this and fill in your base_id and tables.
+
+base_id: appXXXXXXXXXXXXXX      # Airtable base ID
+
+tables:
+  - name: Contacts               # Airtable table name
+    bq_table: contacts           # BigQuery table name (in the dataset from config.yaml)
+    # view: Grid view            # optional: sync only a specific Airtable view
