@@ -12,3 +12,4 @@ tmp/
 .idea/
 *.iml
 .claude/handoff.md
+civis_config.md
