@@ -71,10 +71,59 @@ def flatten_record(record: dict) -> dict:
     return row
 
 
-def fetch_base_schema(base_id: str) -> dict[str, list[str]]:
-    """Fetch field names for every table in a base via the Airtable metadata API.
+# ── Airtable type → pandas dtype mapping ──────────────────────────────
+# Airtable field types that map to native BQ types via pandas nullable dtypes.
+# Types not listed here stay as object (string) — the safe default.
 
-    Returns {table_name: [field_name, ...]} with names already sanitised.
+AIRTABLE_TYPE_MAP: dict[str, str] = {
+    # Numeric
+    "number": "Float64",
+    "currency": "Float64",
+    "percent": "Float64",
+    "duration": "Float64",       # seconds
+    "autoNumber": "Int64",
+    "count": "Int64",
+    "rating": "Int64",
+    # Boolean
+    "checkbox": "boolean",
+    # Temporal — handled specially in coerce_column_types (not a simple astype)
+    "date": "_datetime",
+    "dateTime": "_datetime",
+    "createdTime": "_datetime",
+    "lastModifiedTime": "_datetime",
+}
+
+
+def coerce_column_types(
+    df: pd.DataFrame,
+    field_types: dict[str, str | None],
+) -> pd.DataFrame:
+    """Cast DataFrame columns to appropriate pandas types based on Airtable field types.
+
+    Operates in-place for efficiency but also returns the DataFrame.
+    Columns that fail to cast are left as-is with a warning.
+    """
+    for col, at_type in field_types.items():
+        if col not in df.columns or at_type is None:
+            continue
+        target = AIRTABLE_TYPE_MAP.get(at_type)
+        if target is None:
+            continue
+        try:
+            if target == "_datetime":
+                df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+            else:
+                df[col] = df[col].astype(target)
+        except Exception:
+            log.warning("  Could not cast column %s (AT type %s) to %s — leaving as-is", col, at_type, target)
+    return df
+
+
+def fetch_base_schema(base_id: str) -> dict[str, dict[str, str | None]]:
+    """Fetch field names and types for every table in a base via the Airtable metadata API.
+
+    Returns {table_name: {sanitised_col_name: airtable_type, ...}}.
+    Metadata columns (_airtable_record_id, _synced_at) have type None.
     """
     token = CredentialManager().get_airtable_key()
     resp = requests.get(
@@ -84,10 +133,11 @@ def fetch_base_schema(base_id: str) -> dict[str, list[str]]:
     resp.raise_for_status()
     schema = {}
     for table in resp.json()["tables"]:
-        cols = ["_airtable_record_id"]
-        cols += [sanitize_column_name(f["name"]) for f in table["fields"]]
-        cols.append("_synced_at")
-        schema[table["name"]] = cols
+        fields: dict[str, str | None] = {"_airtable_record_id": None}
+        for f in table["fields"]:
+            fields[sanitize_column_name(f["name"])] = f.get("type")
+        fields["_synced_at"] = None
+        schema[table["name"]] = fields
     return schema
 
 
@@ -114,13 +164,14 @@ def sync_table(
     dataset: str,
     base_id: str,
     table_cfg: dict,
-    schema_columns: list[str] | None = None,
+    field_types: dict[str, str | None] | None = None,
 ) -> int:
     """Sync one Airtable table to BigQuery. Returns row count."""
     at_name = table_cfg["name"]
     bq_table = table_cfg["bq_table"]
     view = table_cfg.get("view")
     destination = f"{dataset}.{bq_table}"
+    schema_columns = list(field_types) if field_types else None
 
     log.info("Fetching %s.%s%s", base_id, at_name, f" (view: {view})" if view else "")
 
@@ -150,6 +201,13 @@ def sync_table(
                 if col not in df.columns:
                     df[col] = None
             df = df[schema_columns]
+        # Cast columns to native types based on Airtable field metadata
+        if field_types:
+            df = coerce_column_types(df, field_types)
+        # Convert remaining object columns to StringDtype so None → pd.NA (real NULL)
+        for col in df.columns:
+            if df[col].dtype == "object":
+                df[col] = df[col].astype(pd.StringDtype())
         log.info("  %d records -> %s (%d columns)", len(df), destination, len(df.columns))
 
     bq.load_dataframe(df, destination, if_exists="replace")
@@ -180,9 +238,9 @@ def main():
             for table_cfg in base_cfg.get("tables", []):
                 if args.only and table_cfg["bq_table"] != args.only:
                     continue
-                schema_columns = base_schema.get(table_cfg["name"])
+                field_types = base_schema.get(table_cfg["name"])
                 try:
-                    n = sync_table(airtable, bq, dataset, base_id, table_cfg, schema_columns)
+                    n = sync_table(airtable, bq, dataset, base_id, table_cfg, field_types)
                     total_rows += n
                     total_tables += 1
                 except Exception:
