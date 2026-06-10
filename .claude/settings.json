@@ -15,6 +15,12 @@
       "mcp__knowledge-library__kl_search",
       "mcp__knowledge-library__kl_write",
       "mcp__knowledge-library__kl_update",
+      "mcp__mailroom__list_slugs",
+      "mcp__mailroom__send_file",
+      "mcp__mailroom__send_file_by_path",
+      "mcp__mailroom__list_inbox",
+      "mcp__mailroom__read_inbox_file",
+      "mcp__mailroom__delete_inbox_file",
       "mcp__bigquery__bq_query",
       "mcp__bigquery__bq_list_tables",
       "mcp__schema__schema_list_datasets",
@@ -28,8 +34,8 @@
     ]
   },
   "meta": {
-    "template_version": 6,
-    "scaffold_date": "2026-03-31",
+    "template_version": 8,
+    "scaffold_date": "2026-05-14",
     "project_type": "bigquery"
   }
 }

@@ -13,3 +13,4 @@ tmp/
 *.iml
 .claude/handoff.md
 civis_config.md
+inbox/
