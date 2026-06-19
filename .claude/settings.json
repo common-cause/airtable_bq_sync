@@ -1,40 +1,25 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd *)",
-      "Bash(cd * && git *)",
-      "Bash(python *)",
-      "Bash(pip install *)",
-      "Bash(.venv/Scripts/python *)",
-      "Bash(.venv/Scripts/pip install *)",
-      "Bash(git *)",
+      "Bash(*)",
+      "PowerShell(*)",
+      "Edit(.claude/**)",
       "WebSearch",
       "WebFetch",
-      "mcp__knowledge-library__kl_list",
-      "mcp__knowledge-library__kl_get",
-      "mcp__knowledge-library__kl_search",
-      "mcp__knowledge-library__kl_write",
-      "mcp__knowledge-library__kl_update",
-      "mcp__mailroom__list_slugs",
-      "mcp__mailroom__send_file",
-      "mcp__mailroom__send_file_by_path",
-      "mcp__mailroom__list_inbox",
-      "mcp__mailroom__read_inbox_file",
-      "mcp__mailroom__delete_inbox_file",
-      "mcp__bigquery__bq_query",
-      "mcp__bigquery__bq_list_tables",
-      "mcp__schema__schema_list_datasets",
-      "mcp__schema__schema_get_dataset",
-      "mcp__schema__schema_list_tables",
-      "mcp__schema__schema_get_table",
-      "mcp__schema__schema_search",
-      "mcp__schema-write__annotate_field",
-      "mcp__schema-write__remove_field_annotation",
-      "mcp__schema-write__get_annotations"
-    ]
+      "mcp__knowledge-library",
+      "mcp__mailroom",
+      "mcp__bigquery",
+      "mcp__schema",
+      "mcp__schema-write",
+      "mcp__project-tools",
+      "mcp__roi_schema",
+      "mcp__google-drive",
+      "mcp__outlook"
+    ],
+    "defaultMode": "acceptEdits"
   },
   "meta": {
-    "template_version": 8,
+    "template_version": 10,
     "scaffold_date": "2026-05-14",
     "project_type": "bigquery"
   }
