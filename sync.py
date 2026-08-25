@@ -201,14 +201,19 @@ def sync_table(
                 if col not in df.columns:
                     df[col] = None
             df = df[schema_columns]
-        # Cast columns to native types based on Airtable field metadata
-        if field_types:
-            df = coerce_column_types(df, field_types)
-        # Convert remaining object columns to StringDtype so None → pd.NA (real NULL)
-        for col in df.columns:
-            if df[col].dtype == "object":
-                df[col] = df[col].astype(pd.StringDtype())
         log.info("  %d records -> %s (%d columns)", len(df), destination, len(df.columns))
+
+    # Typing runs for BOTH branches. An empty frame's columns are all dtype object,
+    # which gives BigQuery nothing to infer from — every column then lands as INT64
+    # and any downstream view expecting STRING/BOOL fails to parse outright. That is
+    # not hypothetical: it broke four 1mc_* views the first time this table synced
+    # empty. Cast from the Airtable field metadata instead of letting BQ guess.
+    if field_types:
+        df = coerce_column_types(df, field_types)
+    # Convert remaining object columns to StringDtype so None → pd.NA (real NULL)
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].astype(pd.StringDtype())
 
     bq.load_dataframe(df, destination, if_exists="replace")
     return len(df)
