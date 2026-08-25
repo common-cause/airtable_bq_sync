@@ -14,12 +14,16 @@ bash app/civis_run.sh
 
 **Non-standard layout note:** this project predates the `civis/*.sh` convention —
 the run script lives at the repo root (`civis_run.sh`), not under `civis/`.
-It pip-installs `ccef-connections` **unpinned from master** plus `pyairtable`,
-then runs `python app/sync.py`. ⚠️ Maintenance flag: per current convention the
-install should be pinned to a release tag (e.g.
-`"ccef-connections[bigquery] @ git+https://github.com/common-cause/ccef_connections.git@v0.2.0"`)
-so library pushes never change this scheduled job — update `civis_run.sh`
-deliberately when upgrading.
+It pip-installs `app/requirements.txt` plus `ccef-connections[airtable,bigquery]`
+**pinned to a release tag**, then runs `python app/sync.py`.
+
+⚠️ Keep the pin. This job installed the library unpinned and without the
+`[bigquery]` extra; when ccef-connections 0.2.0 moved `google-cloud-bigquery`
+behind extras on 2026-06-04 the job began failing at import and did so for 82
+consecutive nights before anyone noticed — `million_conversations` in BigQuery
+sat frozen that whole time. Bump the tag in `civis_run.sh` deliberately when
+upgrading, and remember `sync.py` also imports `yaml`/`pandas` directly, which is
+why `requirements.txt` is installed alongside the library.
 
 ## Scripts
 
@@ -27,7 +31,7 @@ deliberately when upgrading.
 - **Type:** Individual (Daily at 3:00 AM ET)
 - **Civis job name:** Airtable BQ Sync (container #347402326)
 - **APIs:** Airtable API (5 req/sec/base), BigQuery (write)
-- **Description:** Config-driven full-replace replication of Airtable tables into BigQuery. For each base/table listed in `config.yaml` → `syncs/million_conversations.yaml` (currently the 1 Million Conversations base `appPuybhyk2FskqMG`), reads all records via pyairtable, sanitizes column names to snake_case, adds `_airtable_record_id` / `_synced_at` metadata columns, JSON-serializes list/dict cells, and loads to `proj-tmc-mem-com.million_conversations` with WRITE_TRUNCATE.
+- **Description:** Config-driven full-replace replication of Airtable tables into BigQuery. For each base/table listed in `config.yaml` → `syncs/million_conversations.yaml` (currently the 1 Million Conversations base `appPuybhyk2FskqMG`), reads all records via ccef-connections' `AirtableConnector` (pyairtable under the hood), sanitizes column names to snake_case, adds `_airtable_record_id` / `_synced_at` metadata columns, JSON-serializes list/dict cells, casts columns to native BQ types from Airtable field metadata (numbers → FLOAT, checkbox → BOOL, dates → TIMESTAMP; else STRING), and loads to `proj-tmc-mem-com.million_conversations` with WRITE_TRUNCATE.
 
 #### Civis configuration
 
