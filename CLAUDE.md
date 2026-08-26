@@ -44,8 +44,12 @@ shared Sheets) — point at it, don't copy it. Full policy: knowledge library en
 - `config.yaml` — Top-level config: BQ project/dataset + list of sync file paths.
 - `syncs/*.yaml` — One per Airtable base. Lists tables to sync with bq_table names.
 - `syncs/million_conversations.yaml` — 1 Million Conversations base (appPuybhyk2FskqMG).
-- `civis_run.sh` — Two-line shell script for Civis container jobs (installs deps + runs sync).
-  Lives at repo root (predates the `civis/*.sh` convention).
+- `civis_run.sh` — Civis container entrypoint: installs `app/requirements.txt` plus
+  `ccef-connections[airtable,bigquery]` pinned to a release tag, then runs the sync.
+  Keep the pin — the unpinned, extras-less install failed at import for 82 straight
+  nights after ccef-connections 0.2.0 moved BigQuery deps behind extras (2026-06-04);
+  bump the tag deliberately when upgrading. Lives at repo root (predates the
+  `civis/*.sh` convention).
 - `civis/SCHEDULED_SCRIPTS.md` — Machine-parsed Civis job manifest (schedule, APIs, credentials);
   pulled into the meta-project's cloud schedule rollup. Keep it current when the job changes.
 - `civis_config.md` — Local-only (gitignored) deployment notes with Civis script link and schedule.
@@ -73,6 +77,8 @@ python sync.py --only event_reports         # sync one table
   `sync.py`): number/currency/percent/duration → Float64, autoNumber/count/rating → Int64,
   checkbox → boolean, date/dateTime/createdTime/lastModifiedTime → TIMESTAMP; unmapped types
   stay strings. Failed casts warn and leave the column as-is.
-- Empty Airtable tables produce empty BQ tables with correct column structure
+- Empty Airtable tables produce empty BQ tables with correct column structure AND types —
+  type coercion runs for the empty branch too (BQ autodetect on an all-object empty frame
+  would otherwise type every column INT64 and break downstream views)
 - BQ views referencing these tables survive syncs; new columns appear in `SELECT *` views
 - Target: `proj-tmc-mem-com.million_conversations`
