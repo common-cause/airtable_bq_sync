@@ -10,3 +10,8 @@ tables:
 
   - name: Event Reports - Attendees
     bq_table: event_reports_attendees
+
+# Deliberately NOT synced (they are operational lookups, not campaign data):
+#   Hosts  — host email -> home state, read by assign_event_states.py
+#   States — currently empty
+# Add them here if they ever need to reach BigQuery.

@@ -1,0 +1,4 @@
+# Civis clones this repo into a Linux container and runs the shell scripts there.
+# A CRLF line ending would make bash fail with "\r: command not found", so force
+# LF regardless of any individual machine's core.autocrlf setting.
+*.sh text eol=lf

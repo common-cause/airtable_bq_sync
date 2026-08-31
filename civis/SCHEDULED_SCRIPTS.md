@@ -51,6 +51,62 @@ why `requirements.txt` is installed alongside the library.
 - `BIGQUERY_CREDENTIALS` — service-account JSON (unquoted) in the password
   field; consumed as `BIGQUERY_CREDENTIALS_PASSWORD`.
 
+### civis/assign_event_states.sh
+- **Type:** Individual (Daily at 2:45 AM ET — **must precede the 3:00 AM sync**)
+- **Civis job name:** _(not yet created — see Deployment below)_
+- **APIs:** Airtable API (read Event Reports + Hosts, write Event State)
+- **Description:** Fills the `Event State` field on Event Reports rows that don't
+  have one, so events land on the campaign map. Resolution order: an explicit
+  state at a comma boundary in the location text → a virtual marker
+  (Zoom/Virtual/Online, which means the text has no geography, so the host's home
+  state stands in) → no geographic signal at all, also host state → a bare state
+  name loose in the text, trusted only when the host's state agrees. Anything
+  unresolved is left blank and logged, never guessed. Only ever fills blanks; a
+  human's assignment is never overwritten.
+
+⚠️ **Ordering matters.** This must run *before* `civis_run.sh`, because the sync
+is what carries the new `Event State` values into BigQuery. Scheduled after, every
+assignment sits a full day stale in the warehouse.
+
+#### Civis configuration
+
+| Field | Value |
+|---|---|
+| Civis script | _(to be created)_ |
+| Source repo | `common-cause/airtable_bq_sync` |
+| Branch | `main` |
+| Docker image | `civisanalytics/datascience-python:8.4` |
+| Command | `bash app/civis/assign_event_states.sh` |
+
+#### Credentials to attach
+
+- `AIRTABLE_API_KEY` — the same PAT the sync uses, but it needs **write** scope
+  on the base (`data.records:write`) in addition to read. Seeding the `Hosts`
+  table also needs `schema.bases:write`, though that is a local operation, not
+  part of this job.
+
 ## On-Demand Scripts
 
-None. Manual runs are done locally via `python sync.py` (reads `.env`).
+### seed_host_states.py (local only — never scheduled)
+
+Seeds/refreshes the `Hosts` table (host email → home state) in the 1MC base from
+the knowledge library entry `common-cause-staff-directory-and-org-chart`.
+
+This is deliberately **not** a Civis job: the knowledge library lives on a
+workstation and is not reachable from a container. The scheduled job above only
+*reads* the Airtable table this writes, which is what keeps it self-contained.
+
+Re-run it whenever the staff directory changes:
+
+```bash
+python seed_host_states.py            # dry run — shows adds/changes
+python seed_host_states.py --apply
+```
+
+Existing rows are updated, never deleted, so hand-added hosts (a volunteer who
+isn't CC staff) survive a refresh. Only people the directory gives a real email
+for are seeded — no addresses are inferred, because the
+`firstinitiallastname` pattern demonstrably breaks (Rosario Palacios is
+`mdrpalacios`). An unlisted host just falls through to "needs a human".
+
+Manual sync runs are done locally via `python sync.py` (reads `.env`).

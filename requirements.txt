@@ -1,6 +1,9 @@
 python-dotenv
 pandas
 pyyaml
+# Imported directly by sync.py and assign_event_states.py (Airtable metadata + REST
+# calls), not just pulled in transitively by ccef-connections — so pin it here.
+requests
 
 # ccef-connections is the REQUIRED shared library for all external API connections (BigQuery,
 # Action Network, Airtable, etc.). Install it from the local path — it is not on PyPI.
