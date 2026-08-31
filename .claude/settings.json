@@ -3,6 +3,7 @@
     "allow": [
       "Bash(*)",
       "PowerShell(*)",
+      "Skill",
       "Edit(.claude/**)",
       "WebSearch",
       "WebFetch",

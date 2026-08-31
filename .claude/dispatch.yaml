@@ -1,0 +1,206 @@
+# =============================================================================
+# DISPATCH CONTRACT — airtable-bq-sync
+# Format: templates/dispatch.yaml v1 (meta repo) · Law: docs/dispatch_treaty.md
+# =============================================================================
+# FIRST CONTRACT for this project, written 2026-08-31. Not a retro-contract:
+# this task type has never run unattended. The pass, the runbook and the I/O
+# tool were built the same day, and the rubric was derived from the six
+# already-assigned rows (see the backtest note under evidence_of_done).
+#
+# This project is named in docs/dispatch_classification.md as the FIRST tier-2
+# loop to contract ("airtable-bq-sync first (WRITE_TRUNCATE = rerun trivially
+# safe)"). Note the scope difference: that ruling is about the SYNC being safe
+# to re-run. This contract does not cover the sync at all — the sync is plain
+# deterministic ETL and stays on Civis, per the standing rule (deterministic
+# pipeline -> Civis; judgment pass -> local scheduled agent). What is contracted
+# here is only the judgment pass that decides which state an event happened in.
+#
+# NO GRANT IS CLAIMED HERE. Tiers are dated human grants and live in the meta
+# catalog (treaty §2.7). Until one lands, the roster computes dispatchable:false
+# and nothing fires. This file states what the task type IS and NEEDS.
+# =============================================================================
+
+version: 1
+revision: 1
+project: airtable-bq-sync
+owner: rkerth-cc
+last_verified: '2026-08-31'
+
+status:
+  in_flight:
+    - "The schedule below is PROPOSED, not registered. No Windows Task Scheduler
+       job exists for this task type yet and the pass has never fired
+       unattended. An interactive invocation is fine and is how the first reps
+       should happen; a scheduled fire cannot occur until both the grant and the
+       scheduler job exist. Advisory rather than a freeze because a run today
+       would be correct, merely unscheduled."
+    - "Event State is currently 6-for-6 populated, so a run right now legitimately
+       finds nothing and reports 'all events mapped'. Do not read an empty
+       candidate list as a broken detection surface until at least one new event
+       report has arrived (they land at roughly one per week)."
+
+notes:
+  - "All Airtable I/O goes through assign_event_states.py from the project root.
+     It makes no decisions — the rubric is the runbook's, deliberately."
+  - "Event Reports carry volunteer names and emails. Run reports use record ids,
+     locations, states and counts. A host may be NAMED where it is the reason for
+     a decision; never their email address."
+  - "The Hosts table (host email -> home state) is seeded from the knowledge
+     library staff directory by seed_host_states.py, which is local-only because
+     the KL is not reachable from an unattended container. This pass only reads
+     it."
+  - "Assigned values reach BigQuery on the next Civis sync (3:00 AM ET). This
+     pass never runs the sync and never writes to BigQuery."
+
+task_types:
+
+  - id: assign-event-states
+    title: Event-state assignment pass
+    class: loop
+    callable_by: human
+    summary: >
+      Decides which US state each unassigned Event Report happened in, from its
+      free-text location and the host's home state, and writes the two-letter
+      code into Event State so the event's attendees appear on the campaign map.
+      An unassigned event is silently absent from state totals.
+    tags: [airtable, event-reports, state, mapping, triage, 1mc, conversations]
+    examples:
+      - "assign the new event states"
+      - "map the new event reports"
+
+    runbook: .claude/skills/assign-event-states/SKILL.md
+
+    schedule: >
+      PROPOSED daily 02:40 America/New_York, Windows Task Scheduler on Rob's
+      machine — deliberately ahead of the 3:00 AM Civis sync, which is what
+      carries Event State into BigQuery. Scheduled after it, every assignment
+      would sit a full day stale in the warehouse. NOT YET REGISTERED (see
+      status.in_flight).
+    detection_surface: >
+      `python assign_event_states.py --list` — every Event Reports row whose
+      Event State is blank, joined to the host's home state from the Hosts
+      table. An empty list is "all events mapped", the quiet-healthy result, and
+      must stay distinguishable from a run that never happened.
+    heartbeat: >
+      logs/event_states/<YYYY-MM-DD_HHMM>.log once the scheduler job exists,
+      newest 60 retained. GAP ON RECORD, inherited from the sibling loops in
+      this fleet: nothing watches that file, so a fire that never happened is
+      invisible. Under law the ledger DISPATCH row is the real heartbeat.
+
+    parameters: []
+    ask_rules: []
+    # Both empty: origin=scheduled cannot interview (treaty §5). The candidate
+    # list IS the input. Every condition that would be a question is either a
+    # rubric rung or an escalation below.
+
+    preconditions:
+      - "Airtable PAT present in .env with read+write on base appPuybhyk2FskqMG."
+      - "The Hosts table exists and is populated; without it the virtual-event
+         and bare-venue rungs of the rubric are unavailable."
+      - "Local-only: runs on Rob's machine. The rubric depends on world knowledge
+         and the seeding step depends on the knowledge library, neither of which
+         a Civis container has."
+
+    writes:
+      - system: Airtable
+        operation: "PATCH the Event State field on Event Reports rows in base
+                    appPuybhyk2FskqMG whose Event State is blank"
+        reversible: true
+        idempotent: true
+        destructive: false
+        notes: >
+          One field, on rows that had no value. The tool re-reads each row
+          immediately before writing and refuses any that is already non-blank,
+          so a human's assignment cannot be overwritten and a retry after partial
+          failure rewrites nothing. Reversal is clearing the field. The blast
+          radius of a WRONG value is larger than the API call suggests: it
+          misattributes an event's attendees to the wrong state on a
+          public-facing map, which is why the runbook biases hard toward leaving
+          a row blank.
+
+    guards:
+      - "Never modify a row that already has an Event State. Those are human
+         adjudications and the tool enforces this, but the agent is briefed not
+         to attempt it."
+      - "Never write a full state name or anything but a 2-letter USPS code."
+      - "When the location text and the host's home state disagree and the text
+         does not name a state explicitly, leave the row blank. Do not pick one."
+      - "Never infer a host's home state from their name or email domain. If they
+         are not in the Hosts table, there is no host signal."
+      - "More than half the candidates unresolvable -> stop and escalate rather
+         than best-effort the rest; the form or the location convention has
+         probably changed."
+
+    abort:
+      max_minutes: 15
+      max_actions: 60
+      # No observed unattended runs yet. Sized off the interactive build: the
+      # candidate list is one API call and the volume is ~1 new event report per
+      # week, so a normal run is a handful of actions. 15 minutes is generous for
+      # that while still letting the treaty zombie rule (max_minutes x 2) flag a
+      # hung run well before morning. REVISIT after five real fires.
+
+    evidence_of_done:
+      - "Count assigned, broken down by state."
+      - "Every assignment: record id, the location text, the state written, and
+         the rubric rung plus reasoning that produced it."
+      - "Every row deliberately left blank: record id, location, and precisely
+         what was ambiguous."
+      - "Any Hosts-table gaps: the host named, and the state that would have been
+         needed."
+      - "The step-4 re-list showing the assigned rows are gone from the candidate
+         list."
+      - "'All events mapped' when the candidate list was empty — the quiet-healthy
+         report."
+      # Backtest on record (2026-08-31, interactive): the rubric was checked
+      # against all six already-assigned rows using the live Hosts table and
+      # reproduced every one — 6 agree, 0 disagree, 0 unresolved. That is
+      # calibration evidence for the rubric, NOT an under-law rep.
+
+    verify: semantic
+    # Mechanical checks cannot see this task type's real failure. A wrong state
+    # is schema-valid, writes-allowlist-clean, and lands inside every timing
+    # bound; it simply attributes an event to the wrong place on a public map,
+    # where nobody is positioned to notice. Tier S should grade the stated
+    # reasoning against the rubric rung claimed — especially rung 3 (venue with
+    # no state named), which is the one that rests on world knowledge, and the
+    # "Delaware Valley" class of trap where a state name sits inside a proper
+    # noun. Cheap to grade: re-read the location text and the claim.
+
+    error_budget:
+      window: 20
+      min_runs_floor: 5
+      pass_threshold: 0.9
+      # Treaty defaults. Note the cadence caveat: at ~1 new event report a week,
+      # most fires are quiet-healthy no-ops, so a 20-run window is many months of
+      # calendar time and the floor of 5 will be what actually binds for a long
+      # while. Do not read an early clean streak as a strong record.
+
+    ticketing:
+      asana_project: "1217842576164435"   # Dispatch Ops
+
+    residual_human_steps:
+      - "Adjudicate the rows left blank: assign the state by hand, or rule that
+         the event has no single state (Rob)."
+      - "Add any missing hosts to the Hosts table, or re-run
+         seed_host_states.py --apply after the KL staff directory is updated
+         (Rob, or an agent working interactively)."
+
+    escalation:
+      - "The Hosts table is missing or empty — rungs 2 and 3 of the rubric are
+         unavailable. Report it rather than falling back to guesses."
+      - "--set reports a record as already assigned that was blank in the
+         candidate list: someone is editing concurrently and the read is stale.
+         Stop and report; do not re-read and retry."
+      - "More than half the candidates land unresolvable — the location
+         convention has probably changed and the rubric needs a human look."
+
+    do_not_touch:
+      - "Every field on Event Reports except Event State, and every row that
+         already has one."
+      - "The Individual Conversation Reports table. It has no state column and is
+         deliberately out of scope for this pass."
+      - "The Hosts table — read-only here. It is authored by seed_host_states.py
+         from the knowledge library, or by hand."
+      - "sync.py, config.yaml and the Civis job. The sync is deterministic ETL
+         and is not part of this contract."

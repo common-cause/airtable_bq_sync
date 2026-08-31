@@ -50,19 +50,20 @@ shared Sheets) — point at it, don't copy it. Full policy: knowledge library en
   nights after ccef-connections 0.2.0 moved BigQuery deps behind extras (2026-06-04);
   bump the tag deliberately when upgrading. Lives at repo root (predates the
   `civis/*.sh` convention).
-- `assign_event_states.py` — Fills blank `Event State` on Airtable Event Reports so events
-  can be mapped. Explicit comma-anchored state in the location text wins; a virtual marker
-  (Zoom/Virtual/Online) or no geographic signal at all falls back to the host's home state;
-  a bare state name loose in the text is trusted only when the host's state agrees.
-  Unresolved rows are left blank and logged, never guessed. Dry run by default, `--apply`
-  writes. Never overwrites an existing assignment.
+- `.claude/dispatch.yaml` — Dispatch contract. Declares the `assign-event-states` task type
+  under the Dispatch Treaty (meta repo `docs/dispatch_treaty.md`). **Currently UNGRANTED**:
+  tiers are dated human grants living in the meta catalog, never here, so nothing fires
+  until Rob grants it. Validate with `python sync_projects.py --check` from the meta repo.
+- `.claude/skills/assign-event-states/SKILL.md` — The runbook, and the source of truth for
+  the judgment. Carries the rubric (explicit state in text → virtual marker → venue with no
+  state → named national event → unresolvable) and the traps: "Delaware Valley Action! …
+  Milford, PA" is PA not DE; uppercase-only 2-letter matching; "March on Washington" is DC.
+- `assign_event_states.py` — I/O only, makes **no decisions**. `--list` emits unassigned
+  Event Reports as JSON joined to host home states (the detection surface); `--set rec=ST`
+  writes, re-reading each row first and refusing any that already has a state.
 - `seed_host_states.py` — Local-only. Seeds/refreshes the `Hosts` table (email → state) in
-  the base from the KL entry `common-cause-staff-directory-and-org-chart`. Not a Civis job:
-  the KL isn't reachable from a container. Updates rows, never deletes, so hand-added hosts
-  survive.
-- `civis/assign_event_states.sh` — Civis entrypoint for the assignment job. **Must be
-  scheduled before the 3:00 AM sync** — the sync is what carries new `Event State` values
-  into BigQuery.
+  the base from the KL entry `common-cause-staff-directory-and-org-chart`. Updates rows,
+  never deletes, so hand-added hosts survive.
 - `civis/SCHEDULED_SCRIPTS.md` — Machine-parsed Civis job manifest (schedule, APIs, credentials);
   pulled into the meta-project's cloud schedule rollup. Keep it current when the job changes.
 - `civis_config.md` — Local-only (gitignored) deployment notes with Civis script link and schedule.
@@ -73,10 +74,16 @@ python sync.py                              # sync all tables
 python sync.py --only event_reports         # sync one table
 python sync.py --allow-shrink               # bypass the row-count floor guard
 
-python assign_event_states.py               # dry run: propose Event State assignments
-python assign_event_states.py --apply       # write them back to Airtable
+python assign_event_states.py --list        # unassigned Event Reports + host states (JSON)
+python assign_event_states.py --set recX=PA  # write one assignment
 python seed_host_states.py --apply          # refresh Hosts from the KL staff directory
 ```
+
+The event-state pass is an **agent judgment task**, not a script to run: invoke
+`/assign-event-states` and follow the runbook. The rule of thumb this project follows is
+*deterministic pipeline → Civis; judgment pass → local scheduled agent* — subscription
+Claude Code cannot be invoked from Civis at all, so the sync stays on Civis and this pass
+does not. See KL `local-scheduled-claude-agents-task-scheduler-the-pattern-for-recurring-agentic-p`.
 
 New Airtable fields need no code change — `sync.py` reads the live Airtable metadata API,
 so a column added in the base appears in BigQuery on the next run (`Event State` arrived
