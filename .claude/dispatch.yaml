@@ -21,18 +21,22 @@
 # =============================================================================
 
 version: 1
-revision: 2
+revision: 3
 project: airtable-bq-sync
 owner: rkerth-cc
 last_verified: '2026-08-31'
 
 status:
   in_flight:
-    - "The schedule below is PROPOSED, not registered. No Windows Task Scheduler
-       job exists for this task type yet and the pass has never fired
-       unattended. An interactive invocation is fine and is how the first reps
-       should happen; a scheduled fire cannot occur until both the grant and the
-       scheduler job exist. Advisory rather than a freeze because a run today
+    - "GRANTED tier 2 on 2026-08-31, after a review pass against the tool and the
+       platform. What is still missing is the SCHEDULER JOB: no Windows Task
+       Scheduler entry exists and this pass has never fired unattended. So a
+       human-initiated run is authorized and correct today, and is how the first
+       reps should happen; there is simply nothing firing it on a clock yet.
+       When that job is built it must invoke the tower's dispatch entrypoint,
+       NOT `claude -p /assign-event-states` — a direct skill invocation bypasses
+       the tower, so its fires are invisible to the ledger and earn no track
+       record (treaty §2.8). Advisory rather than a freeze because a run today
        would be correct, merely unscheduled."
     - "An EMPTY candidate list is a healthy result, not a broken detection
        surface. New event reports arrive at roughly one a week, so most fires
@@ -47,7 +51,11 @@ notes:
      It makes no decisions — the rubric is the runbook's, deliberately."
   - "Event Reports carry volunteer names and emails. Run reports use record ids,
      locations, states and counts. A host may be NAMED where it is the reason for
-     a decision; never their email address."
+     a decision; never their email address. As of the pre-grant review this is
+     structural rather than a norm the agent must remember: assign_event_states.py
+     does the Hosts join internally and no longer emits host_email at all, so the
+     address never enters the spawn's context. Under law a run report becomes a
+     ledger record — keep it that way if the tool is ever extended."
   - "The Hosts table (host email -> home state) is seeded from the knowledge
      library staff directory by seed_host_states.py, which is local-only because
      the KL is not reachable from an unattended container. This pass only reads
