@@ -58,6 +58,7 @@ shared Sheets) — point at it, don't copy it. Full policy: knowledge library en
 ```bash
 python sync.py                              # sync all tables
 python sync.py --only event_reports         # sync one table
+python sync.py --allow-shrink               # bypass the row-count floor guard
 ```
 
 ## Civis Deployment
@@ -71,7 +72,20 @@ python sync.py --only event_reports         # sync one table
 ## Architecture Notes
 - Full-replace sync: every run truncates and reloads each BQ table
 - Column names are sanitized from Airtable field names to snake_case
-- Metadata columns added: `_airtable_record_id`, `_synced_at`
+- Metadata columns added: `_airtable_record_id`, `_airtable_created_time` (TIMESTAMP),
+  `_synced_at`. `_airtable_created_time` comes from Airtable's per-record `createdTime`
+  and is typed by declaring it as a `createdTime` field in `fetch_base_schema` — it is
+  the only dependable time dimension in this base, since the user-entered date fields
+  (`Conversation Date`, `Event Date`) are in practice left blank on every record.
+  Any new metadata column must be added to `fetch_base_schema` as well as
+  `flatten_record`: `sync_table` reindexes to exactly `list(field_types)` and silently
+  drops anything missing from it.
+- Row-count floor guard: a load that would drop a table below `SHRINK_GUARD_RATIO`
+  (50%) of its current BQ row count raises `ShrinkGuardError` and fails that table
+  instead of truncating it. Full-replace means a successful-but-empty Airtable response
+  is otherwise indistinguishable from a legitimate delete — both truncate and both exit
+  0. Tables that are already empty in BQ are exempt, so genuinely-empty tables like
+  `event_reports_attendees` still sync. Use `--allow-shrink` when a large drop is real.
 - List/dict Airtable values are JSON-serialized to strings
 - Columns are cast to native BQ types using Airtable field metadata (`AIRTABLE_TYPE_MAP` in
   `sync.py`): number/currency/percent/duration → Float64, autoNumber/count/rating → Int64,

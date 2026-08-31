@@ -34,6 +34,15 @@ log = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
+# A full-replace sync will truncate a table to nothing if Airtable hands back
+# zero records, so refuse any load that would drop a table below this fraction
+# of the row count BigQuery already holds. Override with --allow-shrink.
+SHRINK_GUARD_RATIO = 0.5
+
+
+class ShrinkGuardError(RuntimeError):
+    """A load would shrink a BQ table past SHRINK_GUARD_RATIO — see check_shrink_guard."""
+
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -52,17 +61,27 @@ def flatten_record(record: dict) -> dict:
     """Flatten an Airtable record into a flat dict for BigQuery.
 
     Airtable records look like:
-        {"id": "recXXX", "fields": {"Name": "Alice", "Tags": ["a", "b"]}}
+        {"id": "recXXX", "createdTime": "2026-08-28T12:28:00.000Z",
+         "fields": {"Name": "Alice", "Tags": ["a", "b"]}}
 
     Returns:
-        {"_airtable_record_id": "recXXX", "name": "Alice", "tags": '["a", "b"]'}
+        {"_airtable_record_id": "recXXX",
+         "_airtable_created_time": "2026-08-28T12:28:00.000Z",
+         "name": "Alice", "tags": '["a", "b"]'}
 
     List/dict field values are JSON-serialised to strings so they survive
     BigQuery ingestion without schema complexity.
     """
     import json
 
-    row = {"_airtable_record_id": record["id"]}
+    row = {
+        "_airtable_record_id": record["id"],
+        # Airtable returns createdTime on every record. It is the only dependable
+        # time dimension these tables have — the user-entered date fields
+        # (Conversation Date, Event Date) are routinely left blank, which left
+        # BigQuery with no way to answer "how many came in last week" at all.
+        "_airtable_created_time": record.get("createdTime"),
+    }
     for field_name, value in record.get("fields", {}).items():
         col = sanitize_column_name(field_name)
         if isinstance(value, (list, dict)):
@@ -123,7 +142,9 @@ def fetch_base_schema(base_id: str) -> dict[str, dict[str, str | None]]:
     """Fetch field names and types for every table in a base via the Airtable metadata API.
 
     Returns {table_name: {sanitised_col_name: airtable_type, ...}}.
-    Metadata columns (_airtable_record_id, _synced_at) have type None.
+    Metadata columns (_airtable_record_id, _synced_at) have type None;
+    _airtable_created_time is declared as Airtable's own createdTime type so it
+    is cast to TIMESTAMP like any other temporal field.
     """
     token = CredentialManager().get_airtable_key()
     resp = requests.get(
@@ -133,7 +154,13 @@ def fetch_base_schema(base_id: str) -> dict[str, dict[str, str | None]]:
     resp.raise_for_status()
     schema = {}
     for table in resp.json()["tables"]:
-        fields: dict[str, str | None] = {"_airtable_record_id": None}
+        # These must be present here, not just in flatten_record: sync_table
+        # reindexes the frame to exactly list(field_types), so a column missing
+        # from this dict is silently dropped before the load.
+        fields: dict[str, str | None] = {
+            "_airtable_record_id": None,
+            "_airtable_created_time": "createdTime",
+        }
         for f in table["fields"]:
             fields[sanitize_column_name(f["name"])] = f.get("type")
         fields["_synced_at"] = None
@@ -158,6 +185,31 @@ def load_config() -> dict:
 
 # ── core sync ────────────────────────────────────────────────────────
 
+def check_shrink_guard(bq: BigQueryConnector, destination: str, new_count: int) -> None:
+    """Refuse a load that would drop `destination` below SHRINK_GUARD_RATIO of its rows.
+
+    Every run replaces each table outright, so a successful-but-empty Airtable
+    response is indistinguishable from a table that was legitimately emptied:
+    both truncate BigQuery, and both report success. A hard API error is already
+    safe — it raises, and the existing table is left untouched — so this covers
+    the quiet case, where the sync cheerfully deletes real data and exits 0.
+
+    Tables that are genuinely empty stay allowed: the guard only fires when
+    BigQuery currently holds rows that the incoming frame would remove.
+    """
+    if not bq.table_exists(destination):
+        return
+    existing = next(iter(bq.query(f"SELECT COUNT(*) AS n FROM `{destination}`")))["n"]
+    if existing == 0 or new_count >= existing * SHRINK_GUARD_RATIO:
+        return
+    raise ShrinkGuardError(
+        f"Refusing to load {destination}: {new_count} incoming rows vs {existing} "
+        f"already in BigQuery, below the {SHRINK_GUARD_RATIO:.0%} floor. Airtable may "
+        f"have returned an incomplete result. If the drop is real, re-run with "
+        f"--allow-shrink."
+    )
+
+
 def sync_table(
     airtable: AirtableConnector,
     bq: BigQueryConnector,
@@ -165,6 +217,7 @@ def sync_table(
     base_id: str,
     table_cfg: dict,
     field_types: dict[str, str | None] | None = None,
+    allow_shrink: bool = False,
 ) -> int:
     """Sync one Airtable table to BigQuery. Returns row count."""
     at_name = table_cfg["name"]
@@ -215,6 +268,9 @@ def sync_table(
         if df[col].dtype == "object":
             df[col] = df[col].astype(pd.StringDtype())
 
+    if not allow_shrink:
+        check_shrink_guard(bq, destination, len(df))
+
     bq.load_dataframe(df, destination, if_exists="replace")
     return len(df)
 
@@ -224,6 +280,11 @@ def main():
     parser.add_argument(
         "--only",
         help="Sync only the table with this bq_table name",
+    )
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Bypass the row-count floor guard (use when records were really deleted)",
     )
     args = parser.parse_args()
 
@@ -245,9 +306,17 @@ def main():
                     continue
                 field_types = base_schema.get(table_cfg["name"])
                 try:
-                    n = sync_table(airtable, bq, dataset, base_id, table_cfg, field_types)
+                    n = sync_table(
+                        airtable, bq, dataset, base_id, table_cfg, field_types,
+                        allow_shrink=args.allow_shrink,
+                    )
                     total_rows += n
                     total_tables += 1
+                except ShrinkGuardError as e:
+                    # Actionable on its own — a traceback here just buries the message
+                    # in the failure email.
+                    log.error("%s", e)
+                    errors.append(table_cfg["bq_table"])
                 except Exception:
                     log.exception("Failed to sync %s", table_cfg["bq_table"])
                     errors.append(table_cfg["bq_table"])
