@@ -92,7 +92,12 @@ python assign_event_states.py --list
 ```
 
 Returns JSON: `record_id`, `location`, `event_name`, `attendee_count`,
-`host_name`, `host_email`, `host_home_state`, `host_in_hosts_table`.
+`host_name`, `host_home_state`, `host_in_hosts_table`.
+
+The host's **email is deliberately not in that output**. The tool does the Hosts
+join itself, so the signal you need is `host_home_state` and
+`host_in_hosts_table`; an address you never receive cannot reach a run report.
+Do not go looking for it in Airtable to fill the gap.
 
 An empty list is **"all events mapped, nothing to assign"** — a healthy quiet
 run. Report it as such and stop; it is not a failure.
@@ -122,8 +127,21 @@ python assign_event_states.py --set recAAA=PA --set recBBB=NC
 
 The tool re-reads each row immediately before writing and skips anything that
 gained a state in the meantime, so this is safe to re-run after a partial
-failure. It exits 1 if anything was skipped — read the `skipped` list, don't
-just retry.
+failure.
+
+**Read the JSON it prints — never infer from the exit code.** A nonzero exit
+does NOT mean nothing was written. Three keys, and you need all three:
+
+- `written` — rows that actually landed. Always accurate, even on a failed run.
+  These are what you report as assigned.
+- `skipped` — rows deliberately not written, each with a reason (already
+  assigned, no such record, malformed code). Read the reasons; don't just retry.
+- `error` — present only when a write batch failed mid-way. It names the
+  `failed_batch` and the `unattempted` rows. Everything in `written` still
+  happened.
+
+Report exactly what `written` says. Do not re-list and diff to work out what
+landed — the tool already told you.
 
 Write **only** the rows you decided. Leave the rest alone.
 

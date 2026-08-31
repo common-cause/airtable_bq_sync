@@ -20,6 +20,17 @@ So this exposes exactly two operations:
 
 Both are read-modify-write safe to re-run: --set re-reads each row immediately
 before writing and skips anything already filled.
+
+--set exits nonzero when anything was skipped or a write batch failed.
+**A nonzero exit does NOT mean nothing was written** — writes that already
+landed are always named in `written`. Read the JSON; never infer from the exit
+code alone, and never re-derive what happened by re-listing and diffing.
+
+The host's email address is deliberately NOT part of --list output. The join to
+the Hosts table happens here, and the caller gets `host_home_state` and
+`host_in_hosts_table` instead. A run report becomes a ledger record under the
+dispatch treaty, so an address the pass has no use for should never enter its
+context in the first place.
 """
 
 import argparse
@@ -108,7 +119,6 @@ def unassigned(bid: str) -> list[dict]:
             "event_name": f.get("Event Name"),
             "attendee_count": f.get("Attendee Count"),
             "host_name": f.get("Volunteer Name"),
-            "host_email": host_email or None,
             "host_home_state": host.get("state"),
             "host_in_hosts_table": host_email.lower() in hosts,
         })
@@ -138,18 +148,36 @@ def apply_assignments(bid: str, pairs: list[tuple[str, str]]) -> dict:
         to_write.append({"id": rid, "fields": {STATE_FIELD: state}})
 
     url = f"{API}/{bid}/{requests.utils.quote(EVENTS_TABLE, safe='')}"
+    written, error = [], None
     for i in range(0, len(to_write), 10):
+        batch = to_write[i:i + 10]
         resp = requests.patch(
             url,
             headers={**_headers(), "Content-Type": "application/json"},
-            json={"records": to_write[i:i + 10]},
+            json={"records": batch},
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            # Stop, but report what already landed. Raising here would lose the
+            # earlier batches: the rows would be written and the caller would
+            # have no way to name them. A write nobody can account for is worse
+            # than a failed write — the agent's report is the only record of
+            # what this pass did.
+            error = {
+                "http_status": resp.status_code,
+                "body": resp.text[:500],
+                "failed_batch": [w["id"] for w in batch],
+                "unattempted": [w["id"] for w in to_write[i + len(batch):]],
+            }
+            break
+        written.extend(batch)
 
-    return {
-        "written": [{"record_id": w["id"], "state": w["fields"][STATE_FIELD]} for w in to_write],
+    result = {
+        "written": [{"record_id": w["id"], "state": w["fields"][STATE_FIELD]} for w in written],
         "skipped": skipped,
     }
+    if error:
+        result["error"] = error
+    return result
 
 
 def main() -> None:
@@ -177,7 +205,7 @@ def main() -> None:
             pairs.append((rid.strip(), state))
         result = apply_assignments(bid, pairs)
         print(json.dumps(result, indent=2))
-        if result["skipped"]:
+        if result["skipped"] or result.get("error"):
             sys.exit(1)
 
 
