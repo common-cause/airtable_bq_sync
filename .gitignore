@@ -9,6 +9,10 @@ build/
 .pytest_cache/
 *.log
 tmp/
+# Dispatch run reports and agent-pass logs. The brief template's convention is
+# <project>/logs/dispatch/, and it assumes this directory is ignored: run
+# reports quote location text and host names straight out of Event Reports.
+logs/
 .idea/
 *.iml
 .claude/handoff.md

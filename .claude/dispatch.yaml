@@ -21,7 +21,7 @@
 # =============================================================================
 
 version: 1
-revision: 1
+revision: 2
 project: airtable-bq-sync
 owner: rkerth-cc
 last_verified: '2026-08-31'
@@ -34,10 +34,13 @@ status:
        should happen; a scheduled fire cannot occur until both the grant and the
        scheduler job exist. Advisory rather than a freeze because a run today
        would be correct, merely unscheduled."
-    - "Event State is currently 6-for-6 populated, so a run right now legitimately
-       finds nothing and reports 'all events mapped'. Do not read an empty
-       candidate list as a broken detection surface until at least one new event
-       report has arrived (they land at roughly one per week)."
+    - "An EMPTY candidate list is a healthy result, not a broken detection
+       surface. New event reports arrive at roughly one a week, so most fires
+       legitimately find nothing and should report 'all events mapped'.
+       (Revision 1 stated a row count here instead. A contract is the wrong place
+       for a fact that changes weekly: the first trial fire found the assertion
+       already false and had to reason around it. State the invariant, not the
+       current data.)"
 
 notes:
   - "All Airtable I/O goes through assign_event_states.py from the project root.
@@ -134,11 +137,12 @@ task_types:
     abort:
       max_minutes: 15
       max_actions: 60
-      # No observed unattended runs yet. Sized off the interactive build: the
-      # candidate list is one API call and the volume is ~1 new event report per
-      # week, so a normal run is a handful of actions. 15 minutes is generous for
-      # that while still letting the treaty zombie rule (max_minutes x 2) flag a
-      # hung run well before morning. REVISIT after five real fires.
+      # One observed spawned run (2026-08-31 trial, 6 candidates — the heaviest
+      # candidate load this table has ever presented): 1.9 minutes, 10 actions.
+      # So the limits sit ~8x and ~6x the only real measurement, which is the
+      # headroom a heavy night wants while still letting the treaty zombie rule
+      # (max_minutes x 2) flag a hung run before morning. REVISIT after five
+      # fires; a typical night is 0-1 candidates and should be far cheaper.
 
     evidence_of_done:
       - "Count assigned, broken down by state."
@@ -152,10 +156,19 @@ task_types:
          list."
       - "'All events mapped' when the candidate list was empty — the quiet-healthy
          report."
-      # Backtest on record (2026-08-31, interactive): the rubric was checked
-      # against all six already-assigned rows using the live Hosts table and
-      # reproduced every one — 6 agree, 0 disagree, 0 unresolved. That is
-      # calibration evidence for the rubric, NOT an under-law rep.
+      # Calibration on record, neither of them an under-law rep (no tower, no
+      # ledger row, no tier-S verifier):
+      #   1. Backtest (2026-08-31, interactive): the rubric checked against all
+      #      six already-assigned rows using the live Hosts table reproduced
+      #      every one — 6 agree, 0 disagree, 0 unresolved.
+      #   2. Trial fire (2026-08-31): the six rows were blanked and a subagent
+      #      spawned on a brief composed to brief_template v1.1. It reproduced
+      #      all six human assignments, including the Delaware-Valley trap, and
+      #      its report passed a tier-M check (schema, writes subset of the
+      #      allowlist, residual-steps coverage, out_of_contract empty, no host
+      #      emails, timing). It also caught this contract asserting a row count
+      #      that had gone stale — which is why revision 2 states the invariant
+      #      instead.
 
     verify: semantic
     # Mechanical checks cannot see this task type's real failure. A wrong state
