@@ -159,6 +159,13 @@ daily 3:00 AM ET). You do not need to run the sync, and should not.
 
 ### 5. Report
 
+**Open each `writes_performed` scope with the record count** — `"3 records, 1 field
+each (recAAA=PA, ...)"`, not `"the Event State field on three rows"`. The tower's
+break-in review counts the rows this pass has written from that leading number, and
+Rob is reading the first three of them one at a time. A count buried mid-sentence
+reads as one row and pulls extra runs into review; it costs him attention, not
+correctness, but it is free to get right.
+
 - Count assigned, by state.
 - Every assignment: record id, the location text, the state, and the rung +
   reasoning that produced it.

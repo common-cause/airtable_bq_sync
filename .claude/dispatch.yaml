@@ -21,23 +21,35 @@
 # =============================================================================
 
 version: 1
-revision: 3
+revision: 4
 project: airtable-bq-sync
 owner: rkerth-cc
-last_verified: '2026-08-31'
+last_verified: 2026-08-31
+# ^ UNQUOTED, and that is load-bearing. Revisions 1-3 wrote '2026-08-31' as a
+# quoted string, which YAML reads as text rather than a date, and the tower's
+# assembly gate hard-FAILS a last_verified that is not a date scalar. Every
+# scheduled fire would have parked before spawning. It went unseen because the
+# only two exercises this contract has had were a hand-composed brief and the
+# fleet sweep, neither of which runs that gate. Found 2026-08-31 by dry-running
+# the fire that was about to be put on a clock.
 
 status:
   in_flight:
-    - "GRANTED tier 2 on 2026-08-31, after a review pass against the tool and the
-       platform. What is still missing is the SCHEDULER JOB: no Windows Task
-       Scheduler entry exists and this pass has never fired unattended. So a
-       human-initiated run is authorized and correct today, and is how the first
-       reps should happen; there is simply nothing firing it on a clock yet.
-       When that job is built it must invoke the tower's dispatch entrypoint,
-       NOT `claude -p /assign-event-states` — a direct skill invocation bypasses
-       the tower, so its fires are invisible to the ledger and earn no track
-       record (treaty §2.8). Advisory rather than a freeze because a run today
-       would be correct, merely unscheduled."
+    - "SCHEDULED as of 2026-08-31: Windows Task Scheduler job 'Airtable BQ Sync -
+       weekly event-state agent', Mondays 02:40 America/New_York, running
+       scripts/run_weekly_event_states.ps1, which calls the TOWER's dispatch
+       entrypoint. It deliberately does not call `claude -p /assign-event-states`
+       — a direct skill invocation bypasses the tower, so its fires would be
+       invisible to the ledger and earn no track record (treaty §2.8). The pass
+       has still never completed a fire unattended; the first Monday is the
+       first real rep."
+    - "BREAK-IN REVIEW OPEN. Rob reads the first THREE rows this pass assigns
+       unattended, one at a time, before it runs unwatched. The watch lives
+       tower-side in rob-assistant's dispatch/break_in_review.yaml, not here —
+       it is a fact about how much unattended writing has been checked, not
+       about what this task type is. Practical effect on a run: none. Keep
+       stating the record count as the FIRST token of each writes_performed
+       scope ('6 records, ...'), which is what the watch counts."
     - "An EMPTY candidate list is a healthy result, not a broken detection
        surface. New event reports arrive at roughly one a week, so most fires
        legitimately find nothing and should report 'all events mapped'.
@@ -82,21 +94,32 @@ task_types:
     runbook: .claude/skills/assign-event-states/SKILL.md
 
     schedule: >
-      PROPOSED daily 02:40 America/New_York, Windows Task Scheduler on Rob's
-      machine — deliberately ahead of the 3:00 AM Civis sync, which is what
-      carries Event State into BigQuery. Scheduled after it, every assignment
-      would sit a full day stale in the warehouse. NOT YET REGISTERED (see
-      status.in_flight).
+      WEEKLY, Mondays 02:40 America/New_York — i.e. Sunday overnight — via
+      Windows Task Scheduler on Rob's machine, vehicle
+      scripts/run_weekly_event_states.ps1. Registered 2026-08-31 (Rob's
+      cadence ruling; revisions 1-3 proposed a daily fire).
+
+      Two constraints fix that slot. WEEKLY because new event reports arrive at
+      roughly one a week: a daily fire would spend six nights of the week
+      reporting "all events mapped", and a loop that is almost always a no-op
+      teaches its heartbeat to be ignored. MONDAY 02:40 because the states must
+      be set before the week starts working off them, and because 02:40 is ahead
+      of the 3:00 AM Civis sync that carries Event State into BigQuery — fire it
+      after and every assignment sits a full week stale in the warehouse, not
+      just a day. Both halves of that are why the slot is not adjustable without
+      re-reading this.
     detection_surface: >
       `python assign_event_states.py --list` — every Event Reports row whose
       Event State is blank, joined to the host's home state from the Hosts
       table. An empty list is "all events mapped", the quiet-healthy result, and
       must stay distinguishable from a run that never happened.
     heartbeat: >
-      logs/event_states/<YYYY-MM-DD_HHMM>.log once the scheduler job exists,
+      logs/event_states/<YYYY-MM-DD_HHMM>.log, written by the scheduler vehicle,
       newest 60 retained. GAP ON RECORD, inherited from the sibling loops in
       this fleet: nothing watches that file, so a fire that never happened is
-      invisible. Under law the ledger DISPATCH row is the real heartbeat.
+      invisible. Under law the ledger DISPATCH row is the real heartbeat — and
+      at a WEEKLY cadence a missed fire now costs a full week, so the gap is
+      worth more here than it was at the proposed daily rate.
 
     parameters: []
     ask_rules: []
@@ -192,10 +215,18 @@ task_types:
       window: 20
       min_runs_floor: 5
       pass_threshold: 0.9
-      # Treaty defaults. Note the cadence caveat: at ~1 new event report a week,
-      # most fires are quiet-healthy no-ops, so a 20-run window is many months of
-      # calendar time and the floor of 5 will be what actually binds for a long
-      # while. Do not read an early clean streak as a strong record.
+      # Treaty defaults. Cadence caveat, REWRITTEN at revision 4 when the fire
+      # went weekly: the window is now 20 WEEKS of calendar time, so the floor of
+      # 5 is what actually binds until roughly February. Do not read an early
+      # clean streak as a strong record.
+      #
+      # The weekly slot does change the mix, and in the useful direction. At the
+      # proposed daily rate ~6 of every 7 fires would have been empty no-ops
+      # padding the denominator; matched to the ~1-a-week arrival rate, a typical
+      # fire now has about one real candidate, so most runs in the window are
+      # runs that actually decided something. Budget arithmetic aside, that is
+      # also what makes the break-in review affordable: three reviewed writes is
+      # about three weeks, not three months.
 
     ticketing:
       asana_project: "1217842576164435"   # Dispatch Ops
